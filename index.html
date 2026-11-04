@@ -64,6 +64,7 @@ button { cursor:pointer; }
 /* instructions on the right, figures on the left */
 .summary > .hint { order:-2; max-width:60ch; }
 .summary > .spacer { order:-1; }
+.summary > .stat.gsnote { flex-basis:100%; justify-content:flex-end; }
 .hint { color:var(--muted); font-size:13px; }
 
 /* ---------- assignment page ---------- */
@@ -95,7 +96,7 @@ button { cursor:pointer; }
 .chip .rmt[aria-checked="true"] i { background:currentColor; }
 .chip .rmt[aria-checked="true"] i::after { inset-inline-start:9px; background:hsl(var(--h) var(--chip-s) var(--chip-l)); }
 .rmt-hint { margin:-4px 0 0; font-size:11px; color:var(--muted); }
-.block.ghost { opacity:.55; cursor:default; border-style:dotted; background-image:none; box-shadow:none; }
+.block.faded { opacity:.55; cursor:default; border-style:dotted; background-image:none; box-shadow:none; }
 .spec-head { font-size:18px; padding-top:6px; border-bottom:2px solid var(--accent); padding-bottom:6px; scroll-margin-top:64px; }
 .block.remote { border-style:dashed; }
 .block.remote .b1::after { content:"عن بعد"; font-size:9.5px; font-weight:600; border:1px solid currentColor; border-radius:999px; padding:0 5px; opacity:.85; }
@@ -255,6 +256,8 @@ body.is-resizing, body.is-resizing * { cursor:ew-resize !important; }
 .lvl-head { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; padding-bottom:2px; }
 .lvl-head h2 { font-size:17px; }
 .mtitle { font-size:13.5px; margin:6px 0 0; color:var(--muted); }
+.quota { font-size:13px; font-weight:600; color:var(--accent); background:var(--accent-soft); border-radius:999px; padding:3px 12px; }
+.quota.over { color:var(--bad); background:var(--bad-soft); }
 .mtitle-row { display:flex; justify-content:space-between; align-items:center; }
 .btn.sm { padding:3px 10px; font-size:12px; }
 .mentry.flash { animation:flash 1.2s ease 2; }
@@ -619,6 +622,16 @@ const roomOf = sec => { if (sec.remote) return null; const t = trainer(sec.train
 const first = name => name.split(' ')[0];
 const slotLabel = i => pStart(i);
 const trainerLoad = t => S.sections.filter(s => s.trainerId === t.id).reduce((a,s) => a + course(s.courseId).hours, 0);
+// quota line shown on every trainer timetable: quota, assigned contact hours (all specialisations), placed hours
+function quotaInfo(t, placedHrs) {
+  if (!t) return { text:'', over:false };
+  const tot = trainerLoad(t) + otherLoad(t).h;
+  const parts = [`النصاب التدريبي: ${t.quota ? t.quota + ' ساعة اتصال' : 'غير محدد'}`, `المُسند: ${tot} ساعة`];
+  if (placedHrs != null) parts.push(`في الجدول: ${placedHrs} ساعة`);
+  if (t.quota) parts.push(tot > t.quota ? `يزيد ${tot - t.quota}` : tot === t.quota ? 'مكتمل' : `متبقي ${t.quota - tot}`);
+  return { text:parts.join(' · '), over: !!t.quota && tot > t.quota };
+}
+const trainerByName = name => [...S.trainers, ...allReal().flatMap(sp => sp.trainers), ...ROOT.specs.gs.trainers].find(t => t.name === name);
 function otherLoad(t) {
   const mine = new Set(S.sections); let h = 0; const where = new Set();
   allReal().forEach(sp => sp.sections.forEach(x => { if (mine.has(x) || !x.trainerId) return; const tt = trainer(x.trainerId); if (tt && tt.name === t.name) { const c = course(x.courseId); h += c.hours; where.add(SPECS[c.spec]); } }));
@@ -846,7 +859,7 @@ function assignPage() {
       <div class="stat"><b>${hrs}</b><span>ساعة اتصال مُسندة</span></div>
       <div class="stat ${over ? 'bad' : ''}"><b>${over}</b><span>مدربة تجاوزت النصاب</span></div>
       <div class="stat"><b>${mySecs.filter(x => x.trainerId && x.remote).length}</b><span>شعبة عن بعد</span></div>
-      ${gsSecs.length ? `<div class="stat"><b>${gsSecs.filter(x => x.trainerId).length}/${gsSecs.length}</b><span>شعب الدراسات العامة (تُسند من تخصص الدراسات العامة)</span></div>` : ''}
+      ${gsSecs.length ? `<div class="stat gsnote"><b>${gsSecs.filter(x => x.trainerId).length}/${gsSecs.length}</b><span>شعب الدراسات العامة (تُسند من تخصص الدراسات العامة)</span></div>` : ''}
       <span class="spacer"></span><span class="hint">اسحبي المقرر من الأسفل إلى مربع المدربة. لنقل شعبة اسحبيها لمربع آخر، أو أعيديها للأسفل.</span>
     </div>
     ${S.isGS && !S.trainers.length ? '<p class="hint">لم تُضف مدربات الدراسات العامة بعد. أرسلي أسماءهن، أو أضيفي مدرباً من الزر «+».</p>' : ''}
@@ -895,7 +908,7 @@ function blockHtml(s, C) {
 
 function ghostHtml(s, lane) {
   const i = info(s);
-  return `<div class="block ghost" style="--h:${i.c.hue}; grid-column:${s.start + 2} / span ${s.len}; grid-row:${lane + 1}" title="${esc(pStart(s.start) + ' – ' + pStart(s.start + s.len) + ' · ' + i.c.code + ' ' + i.c.name + ' — أ. ' + (i.t?.name || '') + ' — من جدول ' + SPECS[i.spec])}">
+  return `<div class="block faded" style="--h:${i.c.hue}; grid-column:${s.start + 2} / span ${s.len}; grid-row:${lane + 1}" title="${esc(pStart(s.start) + ' – ' + pStart(s.start + s.len) + ' · ' + i.c.code + ' ' + i.c.name + ' — أ. ' + (i.t?.name || '') + ' — من جدول ' + SPECS[i.spec])}">
     <div class="b1">${esc(i.c.code)}<span class="badge-hours num">${s.len}س</span></div><div class="b2">${esc(i.c.name)}</div><div class="b3">أ. ${esc(i.t?.name || '')}</div></div>`;
 }
 function gridHtml(C, filter = inView, gkey = '', ghosts = []) {
@@ -956,7 +969,8 @@ function schedulePage() {
     const tk = v.type === 'trainer' ? 'n:' + trainer(id).name : null;
     const ghosts = tk ? foreignAll.filter(x => info(x).tkey === tk) : [];
     const hrs = S.sessions.filter(x => x.day != null && f(x)).reduce((a, x) => a + x.len, 0);
-    return `<section class="lvl-block" id="lvl-e${idx}"><div class="lvl-head"><h2>${esc(label)}</h2><span class="hint num">${hrs} ساعة في الجدول${ghosts.length ? ` · ${ghosts.length} محاضرة باهتة من تخصص آخر` : ''}</span></div><div class="tt-wrap">${gridHtml(C, f, '', ghosts)}</div></section>`;
+    const q = v.type === 'trainer' ? quotaInfo(trainer(id), hrs) : null;
+    return `<section class="lvl-block" id="lvl-e${idx}"><div class="lvl-head"><h2>${esc(label)}</h2>${q ? `<span class="quota num ${q.over ? 'over' : ''}">${q.text}</span>` : `<span class="hint num">${hrs} ساعة في الجدول</span>`}${ghosts.length ? `<span class="hint num">${ghosts.length} محاضرة باهتة من تخصص آخر</span>` : ''}</div><div class="tt-wrap">${gridHtml(C, f, '', ghosts)}</div></section>`;
   }).join('') : `<p class="hint">${v.type === 'room' ? 'لم تُحدد معامل للمدربات بعد. أدخلي رقم المعمل في مربع كل مدربة بصفحة الإسناد.' : 'لا توجد محاضرات في الجدول بعد.'}</p>`);
   const navItems = v.type === 'trainer' || v.type === 'room' ? ents.map(([id, label], idx) => [`e${idx}`, label]) : S.isGS ? REAL().filter(k => S.courses.some(c => c.spec === k)).map(k => [k, SPECS[k]]) : LEVELS.map(L => [L, LV[L]]);
   const levelNav = v.type === 'all' ? '' : `<nav class="levelnav" aria-label="الانتقال">${navItems.map(([k, l]) => `<button data-jump="${k}">${l}</button>`).join('')}</nav>`;
@@ -1207,7 +1221,7 @@ function mGroupGrid(list, type, C) {
 function mGroupStack(type, C) {
   const gs = mGroups(type);
   if (!gs.length) return `<p class="hint">${type === 'trainer' ? 'لم تُكتب أسماء مدربات في الجدول اليدوي بعد.' : 'لم تُكتب أرقام معامل في الجدول اليدوي بعد.'}</p>`;
-  return gs.map(([k, list], idx) => `<section class="lvl-block" id="lvl-e${idx}"><div class="lvl-head"><h2>${esc(mGroupLabel(k, type))}</h2><span class="hint num">${list.reduce((a, e) => a + e.len, 0)} ساعة</span></div><div class="tt-wrap">${mGroupGrid(list, type, C)}</div></section>`).join('');
+  return gs.map(([k, list], idx) => `<section class="lvl-block" id="lvl-e${idx}"><div class="lvl-head"><h2>${esc(mGroupLabel(k, type))}</h2>${type === 'trainer' && trainerByName(k) ? ((q) => `<span class="quota num ${q.over ? 'over' : ''}">${q.text}</span>`)(quotaInfo(trainerByName(k), list.reduce((a, e) => a + e.len, 0))) : `<span class="hint num">${list.reduce((a, e) => a + e.len, 0)} ساعة</span>`}</div><div class="tt-wrap">${mGroupGrid(list, type, C)}</div></section>`).join('');
 }
 function mDecor() {
   const C = mConflicts();
@@ -1710,14 +1724,17 @@ async function exportExcel() {
   const ws0 = X.utils.aoa_to_sheet(rows); ws0['!cols'] = [10,8,8,11,30,9,20,10,8].map(w => ({ wch:w }));
   const viewName = { level:'المستويات', trainer:'المدربات', room:'المعامل', all:'العام' }[S.view.type] || 'العام';
   if (S.view.type === 'all') X.utils.book_append_sheet(wb, ws0, sheetName('الجدول العام', used));
-  const grid = (filter, text) => {
-    const aoa = [['اليوم', ...Array.from({length:n}, (_,k) => `${pStart(k)} - ${pEnd(k)}`)]], merges = [];
+  const grid = (filter, text, title) => {
+    const aoa = [], merges = [];
+    if (title) { aoa.push([title]); merges.push({ s:{ r:0, c:0 }, e:{ r:0, c:n } }); }
+    aoa.push(['اليوم', ...Array.from({length:n}, (_,k) => `${pStart(k)} - ${pEnd(k)}`)]);
+    const off = aoa.length - 1;
     DAYS.forEach((d, di) => {
       const row = [d, ...Array(n).fill('')], taken = new Set();
       placed.filter(s => s.day === di && filter(s)).forEach(s => {
         const c = 1 + s.start; row[c] = row[c] ? row[c] + ' / ' + text(s) : text(s);
         let free = true; for (let k = c; k < c + s.len; k++) if (taken.has(k)) free = false;
-        if (free && s.len > 1 && s.start + s.len <= n) { merges.push({ s:{ r:di + 1, c }, e:{ r:di + 1, c:c + s.len - 1 } }); }
+        if (free && s.len > 1 && s.start + s.len <= n) { merges.push({ s:{ r:di + 1 + off, c }, e:{ r:di + 1 + off, c:c + s.len - 1 } }); }
         for (let k = c; k < c + s.len; k++) taken.add(k);
       });
       aoa.push(row);
@@ -1726,7 +1743,7 @@ async function exportExcel() {
     return ws;
   };
   const vt = S.view.type;
-  if (vt === 'trainer') viewEntities('trainer').forEach(([id, label]) => X.utils.book_append_sheet(wb, grid(s => info(s).t?.id === id, s => { const i = info(s); return `${i.c.code} | ${gName(i)} | ${i.place}`; }), sheetName(label, used)));
+  if (vt === 'trainer') viewEntities('trainer').forEach(([id, label]) => { const f = s => info(s).t?.id === id; const hrs = placed.filter(f).reduce((a, x) => a + x.len, 0); X.utils.book_append_sheet(wb, grid(f, s => { const i = info(s); return `${i.c.code} | ${gName(i)} | ${i.place}`; }, `${label} — ${quotaInfo(trainer(id), hrs).text}`), sheetName(label, used)); });
   if (vt === 'level') [...new Set(placed.map(s => info(s).gk))].sort().forEach(g => X.utils.book_append_sheet(wb, grid(s => info(s).gk === g, s => { const i = info(s); return `${i.c.code} | أ. ${i.t.name} | ${i.place}`; }), sheetName(((p) => `${S.isGS ? SPECS[p.spec].split(' ')[0] + ' ' : ''}م${p.L} نموذج ${p.m}`)(gkParts(g)), used)));
   if (vt === 'room') viewEntities('room').forEach(([r]) => X.utils.book_append_sheet(wb, grid(s => info(s).room === r, s => { const i = info(s); return `${i.c.code} | ${gName(i)} | أ. ${i.t.name}`; }), sheetName(r, used)));
   if (!wb.SheetNames.length) return toast('لا يوجد ما يُحفظ في هذا العرض بعد');
@@ -1742,11 +1759,11 @@ async function pdfPages(pages, filename) {
   const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
   try {
     for (let i = 0; i < pages.length; i++) {
-      const { title, node } = pages[i];
+      const { title, node, sub } = pages[i];
       const box = document.createElement('div');
       box.className = 'force-light'; box.dir = 'rtl';
       box.style.cssText = 'position:fixed; left:-10000px; top:0; width:1240px; padding:28px; background:var(--bg); color:var(--ink); font-family:var(--font-body)';
-      box.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px"><div style="display:flex; align-items:center; gap:16px"><img src="${LOGO}" alt="" style="height:58px; width:auto"><h2 style="font-family:var(--font-display); font-size:22px; margin:0">${esc(title)}</h2></div><span style="color:var(--muted)">التخصص: ${SPECS[ROOT.current]}</span></div>`;
+      box.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px"><div style="display:flex; align-items:center; gap:16px"><img src="${LOGO}" alt="" style="height:58px; width:auto"><div><h2 style="font-family:var(--font-display); font-size:22px; margin:0">${esc(title)}</h2>${sub ? `<div style="font-size:15px; color:var(--accent); margin-top:4px; font-weight:600">${esc(sub)}</div>` : ''}</div></div><span style="color:var(--muted)">التخصص: ${SPECS[ROOT.current]}</span></div>`;
       node.style.minWidth = '0';
       node.querySelectorAll('.rz, .lock, .lane-btns').forEach(el => el.remove());
       const wrap = document.createElement('div'); wrap.className = 'tt-wrap'; wrap.style.overflow = 'visible'; wrap.appendChild(node); box.appendChild(wrap);
@@ -1777,7 +1794,8 @@ function exportPdf() {
     return pdfPages(ents.map(([id, label]) => {
       const f = S.view.type === 'trainer' ? (s => info(s).t?.id === id) : (s => info(s).room === id);
       const gh = S.view.type === 'trainer' ? fs.filter(x => info(x).tkey === 'n:' + trainer(id).name) : [];
-      return { title:'جدول ' + label, node:nodeOf(gridHtml(C, f, '', gh)) };
+      const hrs = S.sessions.filter(x => x.day != null && f(x)).reduce((a, x) => a + x.len, 0);
+      return { title:'جدول ' + label, sub: S.view.type === 'trainer' ? quotaInfo(trainer(id), hrs).text : '', node:nodeOf(gridHtml(C, f, '', gh)) };
     }), `ScheduleFlow-جداول-${S.view.type === 'trainer' ? 'المدربات' : 'المعامل'}.pdf`);
   }
   return pdfFrom('الجدول العام', nodeOf(gridHtml(conflicts())), 'ScheduleFlow-الجدول-العام.pdf');
@@ -1801,7 +1819,7 @@ function exportManualPdf() {
   if (mView() !== 'level') {
     const gs = mGroups(mView()), C = mConflicts();
     if (!gs.length) return toast('لا يوجد ما يُحفظ في هذا العرض بعد');
-    return pdfPages(gs.map(([k, list]) => ({ title:'جدول ' + mGroupLabel(k, mView()), node:nodeOf(mGroupGrid(list, mView(), C)) })), `ScheduleFlow-الجدول-اليدوي-${mView() === 'trainer' ? 'المدربات' : 'المعامل'}.pdf`);
+    return pdfPages(gs.map(([k, list]) => ({ title:'جدول ' + mGroupLabel(k, mView()), sub: mView() === 'trainer' && trainerByName(k) ? quotaInfo(trainerByName(k), list.reduce((a, e) => a + e.len, 0)).text : '', node:nodeOf(mGroupGrid(list, mView(), C)) })), `ScheduleFlow-الجدول-اليدوي-${mView() === 'trainer' ? 'المدربات' : 'المعامل'}.pdf`);
   }
   const keys = [...new Set(M().entries.map(e => e.sheet))].sort((a,b) => a.localeCompare(b, 'ar'));
   if (!keys.length) return toast('الجدول اليدوي فارغ. أضيفي محاضرات أولاً');
@@ -1818,7 +1836,8 @@ async function exportManualExcel() {
   if (vt !== 'level') {
     mGroups(vt).forEach(([k, list]) => {
       const { lane, count } = mLaneOf(list);
-      const aoa = [[mGroupLabel(k, vt)], ['اليوم', ...Array.from({length:n}, (_,i) => `${pStart(i)} - ${pEnd(i)}`)]], merges = [{ s:{ r:0, c:0 }, e:{ r:0, c:n } }];
+      const tq = vt === 'trainer' && trainerByName(k) ? ' — ' + quotaInfo(trainerByName(k), list.reduce((a, e) => a + e.len, 0)).text : '';
+      const aoa = [[mGroupLabel(k, vt) + tq], ['اليوم', ...Array.from({length:n}, (_,i) => `${pStart(i)} - ${pEnd(i)}`)]], merges = [{ s:{ r:0, c:0 }, e:{ r:0, c:n } }];
       DAYS.forEach((d, di) => {
         const L = count[di], r0 = aoa.length;
         for (let l = 0; l < L; l++) {
