@@ -61,6 +61,9 @@ button { cursor:pointer; }
 .stat b { font-size:20px; font-family:var(--font-display); font-variant-numeric:tabular-nums; }
 .stat span { color:var(--muted); font-size:13px; }
 .stat.bad b { color:var(--bad); }
+/* instructions on the right, figures on the left */
+.summary > .hint { order:-2; max-width:60ch; }
+.summary > .spacer { order:-1; }
 .hint { color:var(--muted); font-size:13px; }
 
 /* ---------- assignment page ---------- */
@@ -218,6 +221,7 @@ body.is-resizing, body.is-resizing * { cursor:ew-resize !important; }
 
 /* ---------- manual page ---------- */
 .tt.manual { --lane-h:88px; }
+.tt.manual.mstatic { --lane-h:58px; }
 .tt.manual .tt-row { padding-block:0; }
 .tt.manual .dayname { margin-block:0; flex-direction:column; gap:6px; }
 .lane-btns { display:flex; gap:4px; }
@@ -279,6 +283,8 @@ body.is-resizing, body.is-resizing * { cursor:ew-resize !important; }
 .help-sec h3 { font-size:16px; display:flex; gap:10px; align-items:center; margin-bottom:8px; }
 .help-sec h3 .num { background:var(--accent); color:var(--accent-ink); }
 .help-sec p { margin:0 0 8px; }
+.help-note { margin-top:12px; background:var(--accent-soft); border:1px solid var(--accent); border-radius:10px; padding:12px 14px; }
+.help-note > b { display:block; margin-bottom:6px; color:var(--accent); }
 .help-sec ul { margin:0; padding-inline-start:20px; display:flex; flex-direction:column; gap:6px; }
 .help-sec li { line-height:1.75; }
 @media (max-width:760px) { .help { grid-template-columns:minmax(0,1fr); } .help-toc { position:static; } }
@@ -859,6 +865,7 @@ function viewEntities(type) {
 }
 function inView(s) {
   const v = S.view, i = info(s);
+  if (v.type === 'all') return true;
   if (v.type === 'trainer') return i.t?.id === v.id;
   if (v.type === 'room') return i.room === v.id;
   if (v.type === 'level') return i.group === v.id;
@@ -926,7 +933,7 @@ function schedulePage() {
   const v = S.view, ents = viewEntities(v.type);
   if ((v.type === 'trainer' || v.type === 'room') && !ents.some(e => e[0] === v.id)) v.id = ents[0]?.[0] ?? null;
   const sel = (v.sel ||= {});
-  const foreignAll = v.type === 'level' ? foreignSessions() : [];
+  const foreignAll = v.type === 'level' || v.type === 'trainer' ? foreignSessions() : [];
   const blocksDef = S.isGS
     ? REAL().flatMap(k => LEVELS.filter(L => S.courses.some(c => c.spec === k && c.level === L)).map(L => ({ key:`${k}~${L}`, spec:k, L })))
     : LEVELS.map(L => ({ key:String(L), spec:ROOT.current, L }));
@@ -944,8 +951,15 @@ function schedulePage() {
         ${S.isGS ? '' : `<button class="mchip add" data-addmodel="${bd.L}" title="إضافة نموذج جديد لهذا المستوى">+ نموذج</button>${ms.length > 1 ? `<button class="mchip add" data-rmmodel="${bd.L}" title="حذف آخر نموذج إذا لم يُسند">−</button>` : ''}`}</div>` : ''}</div>
       ${grids}</section>`;
   }).join('');
-  const navItems = S.isGS ? REAL().filter(k => S.courses.some(c => c.spec === k)).map(k => [k, SPECS[k]]) : LEVELS.map(L => [L, LV[L]]);
-  const levelNav = v.type !== 'level' ? '' : `<nav class="levelnav" aria-label="الانتقال">${navItems.map(([k, l]) => `<button data-jump="${k}">${l}</button>`).join('')}</nav>`;
+  const entStack = !(v.type === 'trainer' || v.type === 'room') ? '' : (ents.length ? ents.map(([id, label], idx) => {
+    const f = v.type === 'trainer' ? (s => info(s).t?.id === id) : (s => info(s).room === id);
+    const tk = v.type === 'trainer' ? 'n:' + trainer(id).name : null;
+    const ghosts = tk ? foreignAll.filter(x => info(x).tkey === tk) : [];
+    const hrs = S.sessions.filter(x => x.day != null && f(x)).reduce((a, x) => a + x.len, 0);
+    return `<section class="lvl-block" id="lvl-e${idx}"><div class="lvl-head"><h2>${esc(label)}</h2><span class="hint num">${hrs} ساعة في الجدول${ghosts.length ? ` · ${ghosts.length} محاضرة باهتة من تخصص آخر` : ''}</span></div><div class="tt-wrap">${gridHtml(C, f, '', ghosts)}</div></section>`;
+  }).join('') : `<p class="hint">${v.type === 'room' ? 'لم تُحدد معامل للمدربات بعد. أدخلي رقم المعمل في مربع كل مدربة بصفحة الإسناد.' : 'لا توجد محاضرات في الجدول بعد.'}</p>`);
+  const navItems = v.type === 'trainer' || v.type === 'room' ? ents.map(([id, label], idx) => [`e${idx}`, label]) : S.isGS ? REAL().filter(k => S.courses.some(c => c.spec === k)).map(k => [k, SPECS[k]]) : LEVELS.map(L => [L, LV[L]]);
+  const levelNav = v.type === 'all' ? '' : `<nav class="levelnav" aria-label="الانتقال">${navItems.map(([k, l]) => `<button data-jump="${k}">${l}</button>`).join('')}</nav>`;
   const opts = S.options ? `<section class="options">${S.options.map(o => `<article class="opt ${S.applied === o.key ? 'applied' : ''}">
       <div class="opt-head"><h3>اقتراح ${STRATS[o.key].name}</h3>${S.applied === o.key ? '<span class="tag">مطبَّق</span>' : `<button class="btn" data-apply="${o.key}">اعتماد</button>`}</div>
       <p>${STRATS[o.key].desc}</p>
@@ -972,7 +986,6 @@ function schedulePage() {
     <div class="toolbar" style="padding-top:0">
       <span class="lbl">عرض</span>
       <div class="seg" role="group">${[['level', S.isGS ? 'التخصصات والمستويات' : 'المستويات'],['trainer','المدربات'],['room','المعامل'],['all','عام']].map(([k,l]) => `<button data-view="${k}" aria-pressed="${v.type === k}">${l}</button>`).join('')}</div>
-      ${v.type === 'trainer' || v.type === 'room' ? `<select class="sel" id="viewid" aria-label="اختيار">${ents.map(e => `<option value="${esc(e[0])}" ${e[0] === v.id ? 'selected' : ''}>${esc(e[1])}</option>`).join('')}</select>` : ''}
       <span class="spacer"></span>
       <button class="btn" id="xls">${ICON.xls}تحميل Excel</button>
       <button class="btn" id="pdf">${ICON.pdf}تحميل PDF</button>
@@ -980,7 +993,7 @@ function schedulePage() {
     ${levelNav}
     <div class="workspace">
       <div style="min-width:0">
-        ${v.type === 'level' ? `<div class="stack">${stacked}</div>` : `<div class="tt-wrap">${gridHtml(C)}</div>`}
+        ${v.type === 'level' ? `<div class="stack">${stacked}</div>` : v.type === 'all' ? `<div class="tt-wrap">${gridHtml(C)}</div>` : `<div class="stack">${entStack}</div>`}
         <div class="legend"><span>اسحبي المحاضرة لنقلها، أو أفلتيها على محاضرة أخرى لتبديل مكانهما.</span><span>اسحبي الطرف الأيسر لتغيير المدة.</span><span><i class="sw" style="box-shadow:inset 0 0 0 2px var(--bad)"></i>تعارض</span><span><i class="sw" style="border:1px dashed var(--warn)"></i>ساعات لا تطابق المقرر</span></div>
       </div>
       <aside class="side">
@@ -1144,6 +1157,8 @@ function manualPage() {
       <span class="lbl">عدد الفترات (50 دقيقة)</span>
       <select class="sel" id="mend" aria-label="عدد الفترات">${[6,7,8,9,10].map(n => `<option value="${n}" ${mN() === n ? 'selected' : ''}>${n} فترات · 8:00 – ${pEnd(n - 1)}</option>`).join('')}</select>
       <span class="spacer"></span>
+      <span class="lbl">عرض</span>
+      <div class="seg" role="group">${[['level','المستويات'],['trainer','المدربات'],['room','المعامل']].map(([k,l]) => `<button data-mview="${k}" aria-pressed="${mView() === k}">${l}</button>`).join('')}</div>
       <button class="btn" id="mcopy" title="ينقل الجدول المقترح لكل المستويات والنماذج هنا لتعديله بحرية">${ICON.spark}ابدئي من الجدول المقترح</button>
       <button class="btn" id="mxls">${ICON.xls}تحميل Excel</button>
       <button class="btn" id="mpdf">${ICON.pdf}تحميل PDF</button>
@@ -1153,14 +1168,46 @@ function manualPage() {
       <div class="stat ${C.list.length ? 'bad' : ''}"><b id="mconf-n">${C.list.length}</b><span>تعارض</span></div>
       <span class="spacer"></span><span class="hint">اضغطي على أي خانة فارغة لإضافة محاضرة، ثم اكتبي المقرر والمدربة والمعمل. اسحبي الطرف الأيسر لتطويل المدة.</span>
     </div>
-    <nav class="levelnav" aria-label="الانتقال">${(S.isGS ? [...new Set(defs.map(d => d.spec))].map(k => [k, SPECS[k]]) : LEVELS.map(L => [L, LV[L]])).map(([k, l]) => `<button data-jump="${k}">${l}</button>`).join('')}</nav>
+    <nav class="levelnav" aria-label="الانتقال">${(mView() !== 'level' ? mGroups(mView()).map(([k], idx) => [`e${idx}`, mGroupLabel(k, mView())]) : S.isGS ? [...new Set(defs.map(d => d.spec))].map(k => [k, SPECS[k]]) : LEVELS.map(L => [L, LV[L]])).map(([k, l]) => `<button data-jump="${k}">${esc(l)}</button>`).join('')}</nav>
     <datalist id="dl-c">${dlc}</datalist><datalist id="dl-t">${dlt}</datalist><datalist id="dl-lab"><option value="${REMOTE}"></option></datalist>
     <div class="workspace">
-      <div style="min-width:0"><div class="stack">${blocks}</div>
-        <div class="legend"><span>اسحبي المحاضرة من شريطها العلوي لنقلها داخل جدولها.</span><span>إذا احتجتِ محاضرتين بنفس الوقت (تقسيم عملي) أضيفي صفاً من «+ صف».</span></div></div>
+      <div style="min-width:0"><div class="stack">${mView() === 'level' ? blocks : mGroupStack(mView(), C)}</div>
+        <div class="legend">${mView() !== 'level' ? '<span>هذا العرض للاطلاع والتحميل. التعديل يكون من عرض المستويات.</span>' : ''}<span>اسحبي المحاضرة من شريطها العلوي لنقلها داخل جدولها.</span><span>إذا احتجتِ محاضرتين بنفس الوقت (تقسيم عملي) أضيفي صفاً من «+ صف».</span></div></div>
       <aside class="side"><div class="panel"><h3>التعارضات <span class="count num ${C.list.length ? 'bad' : ''}" id="mconf-c">${C.list.length}</span></h3><div id="mconf">${mConfHtml(C)}</div>
         <p class="hint" style="margin:10px 0 0">يفحص كل المستويات والنماذج معاً: نفس المدربة أو نفس المعمل في الوقت ذاته. اضغطي على التعارض للانتقال إليه.</p></div></aside>
     </div>`;
+}
+const mView = () => M().view || 'level';
+function mGroups(type) {
+  const map = new Map();
+  M().entries.forEach(e => { const k = type === 'trainer' ? norm(e.trainer) : String(e.lab || '').trim(); if (!k) return; if (!map.has(k)) map.set(k, []); map.get(k).push(e); });
+  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ar', { numeric:true }));
+}
+const mGroupLabel = (k, type) => type === 'trainer' ? 'أ. ' + k : (k === REMOTE ? REMOTE : 'معمل ' + k);
+const mModelShort = key => { const p = mSplit(key); return `${p.spec ? SPECS[p.spec].split(' ')[0] + ' ' : ''}م${p.L}-${p.m}`; };
+function mLaneOf(list) { // lanes per day for entries gathered from several sheets
+  const lane = new Map(), count = [1,1,1,1,1];
+  DAYS.forEach((_, di) => { const ends = []; list.filter(e => e.day === di).sort((a, b) => a.start - b.start).forEach(e => { let l = ends.findIndex(x => x <= e.start); if (l < 0) { l = ends.length; ends.push(0); } ends[l] = e.start + e.len; lane.set(e.id, l); }); count[di] = Math.max(1, ends.length); });
+  return { lane, count };
+}
+function mGroupGrid(list, type, C) {
+  const n = mN(), { lane, count } = mLaneOf(list);
+  const head = `<div class="tt-head"><div></div>${Array.from({length:n}, (_,i) => `<div><b>${pStart(i)}</b>${pEnd(i)}</div>`).join('')}</div>`;
+  const rows = DAYS.map((d, di) => {
+    const cells = Array.from({length:n}, (_,k) => `<div class="cell" style="grid-column:${k + 2}"></div>`).join('');
+    const ents = list.filter(e => e.day === di).map(e => {
+      const c = mCourse(e), lab = String(e.lab || '').trim();
+      const other = type === 'trainer' ? (lab ? (lab === REMOTE ? REMOTE : 'معمل ' + lab) : '') : (e.trainer ? 'أ. ' + norm(e.trainer) : '');
+      return `<div class="mentry sentry ${c ? '' : 'plain'} ${C.bad.has(e.id) ? 'bad' : ''}" style="--h:${c ? c.hue : 200}; grid-column:${e.start + 2} / span ${e.len}; grid-row:${lane.get(e.id) + 1}"><b>${esc(e.course)}</b><span>${esc(mModelShort(e.sheet))}${other ? ' · ' + esc(other) : ''}</span></div>`;
+    }).join('');
+    return `<div class="tt-row" style="grid-template-rows:repeat(${count[di]}, var(--lane-h))"><div class="dayname">${d}</div>${cells}${ents}</div>`;
+  }).join('');
+  return `<div class="tt manual mstatic" style="--n:${n}">${head}${rows}</div>`;
+}
+function mGroupStack(type, C) {
+  const gs = mGroups(type);
+  if (!gs.length) return `<p class="hint">${type === 'trainer' ? 'لم تُكتب أسماء مدربات في الجدول اليدوي بعد.' : 'لم تُكتب أرقام معامل في الجدول اليدوي بعد.'}</p>`;
+  return gs.map(([k, list], idx) => `<section class="lvl-block" id="lvl-e${idx}"><div class="lvl-head"><h2>${esc(mGroupLabel(k, type))}</h2><span class="hint num">${list.reduce((a, e) => a + e.len, 0)} ساعة</span></div><div class="tt-wrap">${mGroupGrid(list, type, C)}</div></section>`).join('');
 }
 function mDecor() {
   const C = mConflicts();
@@ -1331,7 +1378,16 @@ function helpPage() {
         <li>يظهر شريط في الأعلى يوضح تاريخ النسخة ووقتها. اضغطي <b>«استرجاع النسخة»</b> للتأكيد، أو «إلغاء».</li>
         <li>بعد التأكيد يرجع العمل كما كان وقت حفظ النسخة.</li>
       </ul>
-      <p><b>تنبيه:</b> الاسترجاع يستبدل العمل الحالي في كل التخصصات بما في الملف، فإذا كان عندك عمل أحدث لم تحفظيه، احفظي نسخة منه أولاً.</p>`],
+      <p><b>تنبيه:</b> الاسترجاع يستبدل العمل الحالي في كل التخصصات بما في الملف، فإذا كان عندك عمل أحدث لم تحفظيه، احفظي نسخة منه أولاً.</p>
+      <div class="help-note"><b>ملاحظة: تسليم الجدول للدراسات العامة</b>
+        <p>مقررات الدراسات العامة تُجدول حول جدول التخصص، لأن متدربات التخصص هن من يحضرنها. لذلك:</p>
+        <ul>
+          <li>بعد أن ينتهي التخصص من جدوله، تحفظ رئيسة القسم <b>نسخة</b> وترسل الملف لرئيسة الدراسات العامة.</li>
+          <li>تفتح رئيسة الدراسات العامة الموقع وتضغط <b>«استرجاع»</b> وتختار الملف، فيظهر جدول التخصص كاملاً.</li>
+          <li>تختار تخصص «الدراسات العامة» من القائمة وتكمل إسناد مقرراتها وجدولتها، والموقع يتجنب أوقات محاضرات التخصص تلقائياً.</li>
+          <li>بعد الانتهاء تحفظ نسخة جديدة وترسلها للتخصص إذا احتاج الجدول النهائي.</li>
+        </ul>
+      </div>`],
     ['h-counts', 'الخطوة 1: عدد الشعب', `
       <p>هنا تحددين كم شعبة يحتاج كل مقرر هذا الترم. المقررات مرتبة حسب المستوى، وبجانب كل مقرر ساعات الاتصال (س.أ) والساعات المعتمدة (و.م).</p>
       <ul>
@@ -1360,7 +1416,8 @@ function helpPage() {
         <li><b>التثبيت:</b> أيقونة القفل على المحاضرة تثبّتها، ثم «أعيدي ترتيب غير المثبّت» يعيد توزيع الباقي فقط.</li>
         <li><b>التعارضات:</b> المحاضرة المتعارضة يظهر حولها إطار أحمر، والقائمة الجانبية تشرح السبب. اضغطي على التعارض للانتقال إليه. الإطار المتقطع البرتقالي يعني أن ساعات الشعبة لا تطابق ساعات المقرر.</li>
         <li><b>غير مجدولة:</b> المحاضرات التي لم تجد مكاناً تظهر في القائمة الجانبية، اسحبيها إلى الجدول.</li>
-        <li><b>العرض:</b> حسب المستويات، أو المدربات، أو المعامل، أو الجدول العام.</li>
+        <li><b>العرض:</b> حسب المستويات، أو المدربات (جدول كل مدربة تحت الأخرى)، أو المعامل (كل محاضرات المعمل في جدوله)، أو الجدول العام. الشريط الثابت في الأعلى ينقلك لأي مدربة أو معمل.</li>
+        <li><b>التحميل يتبع العرض:</b> ملف Excel وPDF يُحفظان بالشكل المفتوح أمامك، فإذا كنتِ على عرض المدربات يُحفظ جدول لكل مدربة، وعلى المعامل جدول لكل معمل.</li>
       </ul>`],
     ['h-manual', 'الجدول اليدوي', `
       <p>جدول فارغ لكل مستوى ونموذج تعبئينه بنفسك.</p>
@@ -1370,6 +1427,7 @@ function helpPage() {
         <li>«+ صف» يضيف صفاً في اليوم للمحاضرات المتزامنة، مثل تقسيم العملي.</li>
         <li>«ابدئي من الجدول المقترح» ينسخ الجدول المقترح هنا لتعدّلي عليه بحرية.</li>
         <li>التعارضات تُفحص بين كل النماذج: نفس المدربة أو نفس المعمل في الوقت ذاته.</li>
+        <li>زر «عرض» يتيح رؤية الجدول حسب المدربات أو المعامل للاطلاع والتحميل، والتعديل يكون من عرض المستويات.</li>
       </ul>`],
     ['h-gs', 'الدراسات العامة', `
       <p>مقررات الدراسات العامة (الإنجليزي والرياضيات والعربي والإسلامية وغيرها) موجودة داخل كل تخصص لأن متدرباته هن من يحضرنها، وتخصص «الدراسات العامة» يجمعها في مكان واحد.</p>
@@ -1484,6 +1542,7 @@ app.addEventListener('click', e => {
   if (b.dataset.grp) { const [L, m] = b.dataset.grp.split(':'); (S.view.sel ||= {})[L] = m; save(); render(); return; }
   if (b.dataset.addmodel) { addModel(+b.dataset.addmodel); return; }
   if (b.dataset.rmmodel) { rmModel(+b.dataset.rmmodel); return; }
+  if (b.dataset.mview) { M().view = b.dataset.mview; save(); render(); window.scrollTo(0, 0); return; }
   if (b.dataset.msheet) { const [L, m] = b.dataset.msheet.split(':'); (M().sel ||= {})[L] = m; save(); render(); return; }
   if (b.dataset.maddm) { const L = b.dataset.maddm, ms = mModels(L); if (ms.length >= MAXSEC) return; const m = LETTERS[ms.length]; ms.push(m); (M().sel ||= {})[L] = m; save(); render(); toast(`أُضيف نموذج ${m} لـ${lkTitle(L)}`); return; }
   if (b.dataset.mrmm) { const L = b.dataset.mrmm, ms = mModels(L), m = ms[ms.length - 1], key = `${L}-${m}`; if (M().entries.some(e => e.sheet === key)) return toast(`نموذج ${m} فيه محاضرات. امسحيها أولاً`); ms.pop(); if (M().sel?.[L] === m) M().sel[L] = ms[ms.length - 1]; save(); render(); return; }
@@ -1649,7 +1708,8 @@ async function exportExcel() {
   const rows = [['اليوم','من','إلى','رمز المقرر','اسم المقرر','الشعبة','المدربة','المعمل','الساعات']];
   placed.forEach(s => { const i = info(s); rows.push([DAYS[s.day], pStart(s.start), pStart(s.start + s.len), i.c.code, i.c.name, i.group, 'أ. ' + i.t.name, i.place, s.len]); });
   const ws0 = X.utils.aoa_to_sheet(rows); ws0['!cols'] = [10,8,8,11,30,9,20,10,8].map(w => ({ wch:w }));
-  X.utils.book_append_sheet(wb, ws0, sheetName('الجدول العام', used));
+  const viewName = { level:'المستويات', trainer:'المدربات', room:'المعامل', all:'العام' }[S.view.type] || 'العام';
+  if (S.view.type === 'all') X.utils.book_append_sheet(wb, ws0, sheetName('الجدول العام', used));
   const grid = (filter, text) => {
     const aoa = [['اليوم', ...Array.from({length:n}, (_,k) => `${pStart(k)} - ${pEnd(k)}`)]], merges = [];
     DAYS.forEach((d, di) => {
@@ -1665,11 +1725,13 @@ async function exportExcel() {
     const ws = X.utils.aoa_to_sheet(aoa); ws['!merges'] = merges; ws['!cols'] = [{ wch:10 }, ...Array(n).fill({ wch:24 })];
     return ws;
   };
-  S.trainers.forEach(t => { if (!placed.some(s => info(s).t?.id === t.id)) return; X.utils.book_append_sheet(wb, grid(s => info(s).t?.id === t.id, s => { const i = info(s); return `${i.c.code} | ${i.group} | ${i.place}`; }), sheetName('أ. ' + t.name, used)); });
-  [...new Set(placed.map(s => info(s).gk))].sort().forEach(g => X.utils.book_append_sheet(wb, grid(s => info(s).gk === g, s => { const i = info(s); return `${i.c.code} | أ. ${i.t.name} | ${i.place}`; }), sheetName(((p) => `${S.isGS ? SPECS[p.spec].split(' ')[0] + ' ' : ''}م${p.L} نموذج ${p.m}`)(gkParts(g)), used)));
-  [...new Set(placed.map(s => info(s).room).filter(Boolean))].sort().forEach(r => X.utils.book_append_sheet(wb, grid(s => info(s).room === r, s => { const i = info(s); return `${i.c.code} | ${i.group} | أ. ${i.t.name}`; }), sheetName(r, used)));
+  const vt = S.view.type;
+  if (vt === 'trainer') viewEntities('trainer').forEach(([id, label]) => X.utils.book_append_sheet(wb, grid(s => info(s).t?.id === id, s => { const i = info(s); return `${i.c.code} | ${gName(i)} | ${i.place}`; }), sheetName(label, used)));
+  if (vt === 'level') [...new Set(placed.map(s => info(s).gk))].sort().forEach(g => X.utils.book_append_sheet(wb, grid(s => info(s).gk === g, s => { const i = info(s); return `${i.c.code} | أ. ${i.t.name} | ${i.place}`; }), sheetName(((p) => `${S.isGS ? SPECS[p.spec].split(' ')[0] + ' ' : ''}م${p.L} نموذج ${p.m}`)(gkParts(g)), used)));
+  if (vt === 'room') viewEntities('room').forEach(([r]) => X.utils.book_append_sheet(wb, grid(s => info(s).room === r, s => { const i = info(s); return `${i.c.code} | ${gName(i)} | أ. ${i.t.name}`; }), sheetName(r, used)));
+  if (!wb.SheetNames.length) return toast('لا يوجد ما يُحفظ في هذا العرض بعد');
   const buf = X.write(wb, { bookType:'xlsx', type:'array' });
-  await offerFile(`ScheduleFlow-${safeName(SPECS[ROOT.current])}.xlsx`, new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  await offerFile(`ScheduleFlow-${safeName(SPECS[ROOT.current])}-جدول-${viewName}.xlsx`, new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
 }
 
 async function pdfPages(pages, filename) {
@@ -1709,7 +1771,16 @@ function exportPdf() {
     const C = conflicts(), fs = foreignSessions();
     return pdfPages(groups.map(g => ({ title:'جدول ' + grpTitle(g), node:nodeOf(gridHtml(C, s => info(s).gk === g, g, fs.filter(x => info(x).gk === g))) })), 'ScheduleFlow-جداول-المستويات.pdf');
   }
-  return pdfFrom(viewTitle(), nodeOf(gridHtml(conflicts())), `ScheduleFlow-${safeName(viewTitle())}.pdf`);
+  if (S.view.type === 'trainer' || S.view.type === 'room') {
+    const C = conflicts(), fs = foreignSessions(), ents = viewEntities(S.view.type);
+    if (!ents.length) return toast('لا يوجد ما يُحفظ في هذا العرض بعد');
+    return pdfPages(ents.map(([id, label]) => {
+      const f = S.view.type === 'trainer' ? (s => info(s).t?.id === id) : (s => info(s).room === id);
+      const gh = S.view.type === 'trainer' ? fs.filter(x => info(x).tkey === 'n:' + trainer(id).name) : [];
+      return { title:'جدول ' + label, node:nodeOf(gridHtml(C, f, '', gh)) };
+    }), `ScheduleFlow-جداول-${S.view.type === 'trainer' ? 'المدربات' : 'المعامل'}.pdf`);
+  }
+  return pdfFrom('الجدول العام', nodeOf(gridHtml(conflicts())), 'ScheduleFlow-الجدول-العام.pdf');
 }
 function jumpTo(L) {
   const el = document.getElementById('lvl-' + L); if (!el) return;
@@ -1727,6 +1798,11 @@ window.addEventListener('scroll', () => {
   });
 }, { passive:true });
 function exportManualPdf() {
+  if (mView() !== 'level') {
+    const gs = mGroups(mView()), C = mConflicts();
+    if (!gs.length) return toast('لا يوجد ما يُحفظ في هذا العرض بعد');
+    return pdfPages(gs.map(([k, list]) => ({ title:'جدول ' + mGroupLabel(k, mView()), node:nodeOf(mGroupGrid(list, mView(), C)) })), `ScheduleFlow-الجدول-اليدوي-${mView() === 'trainer' ? 'المدربات' : 'المعامل'}.pdf`);
+  }
   const keys = [...new Set(M().entries.map(e => e.sheet))].sort((a,b) => a.localeCompare(b, 'ar'));
   if (!keys.length) return toast('الجدول اليدوي فارغ. أضيفي محاضرات أولاً');
   const C = mConflicts();
@@ -1738,6 +1814,32 @@ async function exportManualExcel() {
   try { await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'); } catch (e) { return toast('تعذّر تحميل مكتبة Excel. تحققي من الاتصال'); }
   const X = window.XLSX, n = mN(), used = new Set();
   const wb = X.utils.book_new(); wb.Workbook = { Views:[{ RTL:true }] };
+  const vt = mView();
+  if (vt !== 'level') {
+    mGroups(vt).forEach(([k, list]) => {
+      const { lane, count } = mLaneOf(list);
+      const aoa = [[mGroupLabel(k, vt)], ['اليوم', ...Array.from({length:n}, (_,i) => `${pStart(i)} - ${pEnd(i)}`)]], merges = [{ s:{ r:0, c:0 }, e:{ r:0, c:n } }];
+      DAYS.forEach((d, di) => {
+        const L = count[di], r0 = aoa.length;
+        for (let l = 0; l < L; l++) {
+          const row = [l ? '' : d, ...Array(n).fill('')];
+          list.filter(e => e.day === di && lane.get(e.id) === l).forEach(e => {
+            const c = mCourse(e), lab = String(e.lab || '').trim();
+            const other = vt === 'trainer' ? (lab ? (lab === REMOTE ? REMOTE : 'معمل ' + lab) : '') : (e.trainer ? 'أ. ' + norm(e.trainer) : '');
+            row[1 + e.start] = [e.course + (c ? ' ' + c.name : ''), mModelShort(e.sheet), other].filter(Boolean).join(' | ');
+            if (e.len > 1) merges.push({ s:{ r:aoa.length, c:1 + e.start }, e:{ r:aoa.length, c:e.start + e.len } });
+          });
+          aoa.push(row);
+        }
+        if (L > 1) merges.push({ s:{ r:r0, c:0 }, e:{ r:r0 + L - 1, c:0 } });
+      });
+      const ws = X.utils.aoa_to_sheet(aoa); ws['!merges'] = merges; ws['!cols'] = [{ wch:10 }, ...Array(n).fill({ wch:28 })];
+      X.utils.book_append_sheet(wb, ws, sheetName(mGroupLabel(k, vt), used));
+    });
+    if (!wb.SheetNames.length) return toast('لا يوجد ما يُحفظ في هذا العرض بعد');
+    const buf = X.write(wb, { bookType:'xlsx', type:'array' });
+    return offerFile(`ScheduleFlow-الجدول-اليدوي-${vt === 'trainer' ? 'المدربات' : 'المعامل'}.xlsx`, new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  }
   const keys = [...new Set(M().entries.map(e => e.sheet))].sort((a,b) => a.localeCompare(b, 'ar'));
   keys.forEach(key => {
     const lanes = mLanes(key);
@@ -1760,7 +1862,7 @@ async function exportManualExcel() {
     X.utils.book_append_sheet(wb, ws, sheetName(`${p.spec ? SPECS[p.spec].split(' ')[0] + ' ' : ''}م${p.L} نموذج ${p.m}`, used));
   });
   const buf = X.write(wb, { bookType:'xlsx', type:'array' });
-  await offerFile('ScheduleFlow-الجدول-اليدوي.xlsx', new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  await offerFile('ScheduleFlow-الجدول-اليدوي-المستويات.xlsx', new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
 }
 
 /* ---------------- boot ---------------- */
